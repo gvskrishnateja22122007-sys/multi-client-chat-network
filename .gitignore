@@ -1,0 +1,27 @@
+# Compiled binaries
+*.o
+*.out
+
+# Executable files
+server/server
+client/client
+
+# Core dumps
+core
+core.*
+
+# Build directories
+build/
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# IDE/editor files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
