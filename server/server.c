@@ -11,66 +11,84 @@
 #define SERVER_PORT 8080
 #define MAX_CLIENTS 10
 #define BUFFER_SIZE 1024
+#define USERNAME_SIZE 32
 
-static void broadcast_message(struct pollfd clients[],
-                              int client_count,
-                              int sender_fd,
-                              const char *message,
-                              ssize_t message_length)
+typedef struct
 {
-    for (int i = 1; i < client_count; i++)
-    {
-        int fd = clients[i].fd;
+    int fd;
+    char username[USERNAME_SIZE];
+} Client;
 
-        if (fd == -1 || fd == sender_fd)
+static void broadcast_message(struct pollfd poll_clients[],
+                              Client clients[],
+                              int count,
+                              int sender_fd,
+                              const char *message)
+{
+    for (int i = 1; i < count; i++)
+    {
+        if (poll_clients[i].fd == -1)
         {
             continue;
         }
 
-        ssize_t sent = send(fd, message, message_length, 0);
+        if (poll_clients[i].fd == sender_fd)
+        {
+            continue;
+        }
 
-        if (sent == -1)
+        if (send(poll_clients[i].fd,
+                 message,
+                 strlen(message),
+                 0) == -1)
         {
             perror("send");
-
-            /*
-             * The client may have disconnected.
-             * Remove it safely.
-             */
-            close(fd);
-            clients[i].fd = -1;
-            clients[i].events = POLLIN;
-
-            printf("Removed disconnected client.\n");
         }
     }
+}
+
+static int find_client(struct pollfd poll_clients[],
+                       int count,
+                       int fd)
+{
+    for (int i = 1; i < count; i++)
+    {
+        if (poll_clients[i].fd == fd)
+        {
+            return i;
+        }
+    }
+
+    return -1;
 }
 
 int main(void)
 {
     int server_fd;
+
     struct sockaddr_in server_addr;
 
-    struct pollfd clients[MAX_CLIENTS + 1];
+    struct pollfd poll_clients[MAX_CLIENTS + 1];
 
-    /*
-     * Prevent a broken client connection from
-     * terminating the entire server.
-     */
+    Client clients[MAX_CLIENTS + 1];
+
     signal(SIGPIPE, SIG_IGN);
 
     /*
-     * Initialize all client slots.
+     * Initialize client slots.
      */
     for (int i = 0; i <= MAX_CLIENTS; i++)
     {
+        poll_clients[i].fd = -1;
+        poll_clients[i].events = POLLIN;
+        poll_clients[i].revents = 0;
+
         clients[i].fd = -1;
-        clients[i].events = POLLIN;
-        clients[i].revents = 0;
+        clients[i].username[0] = '\0';
     }
 
     /*
-     * 1. Create server socket
+     * Create server socket.
      */
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -80,9 +98,6 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    /*
-     * Allow immediate reuse of port 8080.
-     */
     int reuse = 1;
 
     if (setsockopt(server_fd,
@@ -99,7 +114,7 @@ int main(void)
     printf("Server socket created successfully.\n");
 
     /*
-     * 2. Configure server address
+     * Configure server address.
      */
     memset(&server_addr, 0, sizeof(server_addr));
 
@@ -108,7 +123,7 @@ int main(void)
     server_addr.sin_port = htons(SERVER_PORT);
 
     /*
-     * 3. Bind
+     * Bind.
      */
     if (bind(server_fd,
              (struct sockaddr *)&server_addr,
@@ -122,7 +137,7 @@ int main(void)
     printf("Server bound to port %d.\n", SERVER_PORT);
 
     /*
-     * 4. Listen
+     * Listen.
      */
     if (listen(server_fd, MAX_CLIENTS) == -1)
     {
@@ -135,17 +150,17 @@ int main(void)
     printf("Maximum clients: %d\n", MAX_CLIENTS);
     printf("Waiting for connections...\n\n");
 
-    /*
-     * Slot 0 is the listening socket.
-     */
+    poll_clients[0].fd = server_fd;
     clients[0].fd = server_fd;
 
     /*
-     * 5. Main server loop
+     * Main server loop.
      */
     while (1)
     {
-        int ready = poll(clients, MAX_CLIENTS + 1, -1);
+        int ready = poll(poll_clients,
+                         MAX_CLIENTS + 1,
+                         -1);
 
         if (ready == -1)
         {
@@ -159,16 +174,19 @@ int main(void)
         }
 
         /*
-         * Check for a new connection.
+         * New connection.
          */
-        if (clients[0].revents & POLLIN)
+        if (poll_clients[0].revents & POLLIN)
         {
             struct sockaddr_in client_addr;
-            socklen_t client_len = sizeof(client_addr);
 
-            int client_fd = accept(server_fd,
-                                   (struct sockaddr *)&client_addr,
-                                   &client_len);
+            socklen_t client_len =
+                sizeof(client_addr);
+
+            int client_fd =
+                accept(server_fd,
+                       (struct sockaddr *)&client_addr,
+                       &client_len);
 
             if (client_fd == -1)
             {
@@ -178,29 +196,30 @@ int main(void)
             {
                 int added = 0;
 
-                for (int i = 1; i <= MAX_CLIENTS; i++)
+                for (int i = 1;
+                     i <= MAX_CLIENTS;
+                     i++)
                 {
-                    if (clients[i].fd == -1)
+                    if (poll_clients[i].fd == -1)
                     {
+                        poll_clients[i].fd = client_fd;
+                        poll_clients[i].events = POLLIN;
+
                         clients[i].fd = client_fd;
-                        clients[i].events = POLLIN;
+                        clients[i].username[0] = '\0';
 
-                        printf("Client connected: %s:%d\n",
-                               inet_ntoa(client_addr.sin_addr),
-                               ntohs(client_addr.sin_port));
+                        printf(
+                            "New connection from %s:%d\n",
+                            inet_ntoa(client_addr.sin_addr),
+                            ntohs(client_addr.sin_port));
 
-                        const char *welcome =
-                            "Welcome to the Multi-Client Chat Server!\n";
+                        const char *prompt =
+                            "Enter your username: ";
 
-                        if (send(client_fd,
-                                 welcome,
-                                 strlen(welcome),
-                                 0) == -1)
-                        {
-                            perror("send welcome");
-                            close(client_fd);
-                            clients[i].fd = -1;
-                        }
+                        send(client_fd,
+                             prompt,
+                             strlen(prompt),
+                             0);
 
                         added = 1;
                         break;
@@ -219,85 +238,160 @@ int main(void)
 
                     close(client_fd);
 
-                    printf("Rejected client: server full.\n");
+                    printf(
+                        "Rejected client: server full.\n");
                 }
             }
         }
 
         /*
-         * Check connected clients.
+         * Handle connected clients.
          */
-        for (int i = 1; i <= MAX_CLIENTS; i++)
+        for (int i = 1;
+             i <= MAX_CLIENTS;
+             i++)
         {
-            int client_fd = clients[i].fd;
+            int client_fd =
+                poll_clients[i].fd;
 
             if (client_fd == -1)
             {
                 continue;
             }
 
-            if (clients[i].revents &
-                (POLLIN | POLLHUP | POLLERR))
+            if (!(poll_clients[i].revents &
+                  (POLLIN | POLLHUP | POLLERR)))
             {
-                char buffer[BUFFER_SIZE];
-
-                ssize_t bytes_received =
-                    recv(client_fd,
-                         buffer,
-                         sizeof(buffer) - 1,
-                         0);
-
-                /*
-                 * Client disconnected.
-                 */
-                if (bytes_received <= 0)
-                {
-                    printf("Client disconnected.\n");
-
-                    close(client_fd);
-                    clients[i].fd = -1;
-                    clients[i].events = POLLIN;
-
-                    continue;
-                }
-
-                buffer[bytes_received] = '\0';
-
-                printf("Message from client %d: %s",
-                       client_fd,
-                       buffer);
-
-                /*
-                 * Prepare broadcast message.
-                 */
-                char message[BUFFER_SIZE + 64];
-
-                int length = snprintf(message,
-                                      sizeof(message),
-                                      "Client %d: %s",
-                                      client_fd,
-                                      buffer);
-
-                if (length > 0)
-                {
-                    broadcast_message(clients,
-                                       MAX_CLIENTS + 1,
-                                       client_fd,
-                                       message,
-                                       length);
-                }
+                continue;
             }
+
+            char buffer[BUFFER_SIZE];
+
+            ssize_t bytes_received =
+                recv(client_fd,
+                     buffer,
+                     sizeof(buffer) - 1,
+                     0);
+
+            /*
+             * Client disconnected.
+             */
+            if (bytes_received <= 0)
+            {
+                if (clients[i].username[0] != '\0')
+                {
+                    char leave_message[BUFFER_SIZE];
+
+                    snprintf(
+                        leave_message,
+                        sizeof(leave_message),
+                        "[Server]: %s left the chat.\n",
+                        clients[i].username);
+
+                    printf("%s", leave_message);
+
+                    broadcast_message(
+                        poll_clients,
+                        clients,
+                        MAX_CLIENTS + 1,
+                        client_fd,
+                        leave_message);
+                }
+
+                printf("Client disconnected.\n");
+
+                close(client_fd);
+
+                poll_clients[i].fd = -1;
+                clients[i].fd = -1;
+                clients[i].username[0] = '\0';
+
+                continue;
+            }
+
+            buffer[bytes_received] = '\0';
+
+            /*
+             * First message = username.
+             */
+            if (clients[i].username[0] == '\0')
+            {
+                buffer[strcspn(buffer, "\r\n")] = '\0';
+
+                strncpy(clients[i].username,
+                        buffer,
+                        USERNAME_SIZE - 1);
+
+                clients[i].username[
+                    USERNAME_SIZE - 1] = '\0';
+
+                printf("Username registered: %s\n",
+                       clients[i].username);
+
+                char welcome[BUFFER_SIZE];
+
+                snprintf(
+                    welcome,
+                    sizeof(welcome),
+                    "[Server]: Welcome, %s!\n",
+                    clients[i].username);
+
+                send(client_fd,
+                     welcome,
+                     strlen(welcome),
+                     0);
+
+                char join_message[BUFFER_SIZE];
+
+                snprintf(
+                    join_message,
+                    sizeof(join_message),
+                    "[Server]: %s joined the chat.\n",
+                    clients[i].username);
+
+                broadcast_message(
+                    poll_clients,
+                    clients,
+                    MAX_CLIENTS + 1,
+                    client_fd,
+                    join_message);
+
+                continue;
+            }
+
+            /*
+             * Normal chat message.
+             */
+            char message[BUFFER_SIZE];
+
+            snprintf(
+                message,
+                sizeof(message),
+                "[%s]: %s",
+                clients[i].username,
+                buffer);
+
+            printf("%s", message);
+
+            broadcast_message(
+                poll_clients,
+                clients,
+                MAX_CLIENTS + 1,
+                client_fd,
+                message);
         }
     }
 
     /*
      * Cleanup.
      */
-    for (int i = 0; i <= MAX_CLIENTS; i++)
+    for (int i = 0;
+         i <= MAX_CLIENTS;
+         i++)
     {
-        if (clients[i].fd != -1)
+        if (poll_clients[i].fd != -1)
         {
-            close(clients[i].fd);
+            close(poll_clients[i].fd);
         }
     }
 
