@@ -6,11 +6,11 @@
 #include <sys/socket.h>
 #include <poll.h>
 
-#define SERVER_IP "127.0.0.1"
+#define DEFAULT_SERVER_IP "127.0.0.1"
 #define SERVER_PORT 8080
 #define BUFFER_SIZE 1024
 
-int main(void)
+int main(int argc, char *argv[])
 {
     int client_fd;
     struct sockaddr_in server_addr;
@@ -18,6 +18,7 @@ int main(void)
     struct pollfd fds[2];
 
     char buffer[BUFFER_SIZE];
+    const char *server_ip = (argc > 1) ? argv[1] : DEFAULT_SERVER_IP;
 
     /*
      * 1. Create socket
@@ -41,7 +42,7 @@ int main(void)
     server_addr.sin_port = htons(SERVER_PORT);
 
     if (inet_pton(AF_INET,
-                  SERVER_IP,
+                  server_ip,
                   &server_addr.sin_addr) <= 0)
     {
         perror("inet_pton");
