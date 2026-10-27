@@ -257,6 +257,14 @@ int main(void)
                      buffer,
                      sizeof(buffer) - 1,
                      0);
+		if(bytes_received < 0 && errno == EINTR)
+		{
+			continue;
+		}
+		if (bytes_received < 0)
+		{
+			perror("recv");
+		}
 
             /*
              * Client disconnected.
