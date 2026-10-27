@@ -7,7 +7,7 @@ CLIENT = client/client
 
 all: $(SERVER) $(CLIENT)
 
-$(SEREVR): server/server.c
+$(SERVER): server/server.c
 	$(CC) $(CFLAGS) -o $(SERVER) server/server.c
 
 $(CLIENT): client/client.c
