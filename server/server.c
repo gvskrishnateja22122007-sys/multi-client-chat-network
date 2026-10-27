@@ -52,6 +52,7 @@ static int send_all(int fd, const char *data, size_t length)
     return 0;
 }
 static void broadcast_message(struct pollfd poll_clients[],
+                              Client clients[],
                               int count,
                               int sender_fd,
                               const char *message)
@@ -72,7 +73,12 @@ static void broadcast_message(struct pollfd poll_clients[],
                  message,
                  strlen(message)) == -1)
         {
-            perror("send");
+		int failed_fd = poll_clients[i].fd;
+		perror("send");
+		close(failed_fd);
+		poll_clients[i].fd = -1;
+		clients[i].fd = -1;
+		clients[i].username[0] = '\0';
         }
     }
 }
@@ -315,6 +321,7 @@ int main(void)
 
                     broadcast_message(
                         poll_clients,
+                        clients,
                         MAX_CLIENTS + 1,
                         client_fd,
                         leave_message);
@@ -373,6 +380,7 @@ int main(void)
 
                 broadcast_message(
                     poll_clients,
+                    clients,
                     MAX_CLIENTS + 1,
                     client_fd,
                     join_message);
@@ -396,6 +404,7 @@ int main(void)
 
             broadcast_message(
                 poll_clients,
+                clients,
                 MAX_CLIENTS + 1,
                 client_fd,
                 message);
