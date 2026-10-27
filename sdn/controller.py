@@ -10,7 +10,7 @@ from os_ken.lib.packet import packet, ethernet, ether_types
 
 
 # Set True to block h3 from sending chat traffic to h1.
-BLOCK_H3_CHAT = False
+BLOCK_H3_CHAT = True
 
 SERVER_IP = "10.0.0.1"
 BLOCKED_CLIENT_IP = "10.0.0.3"
