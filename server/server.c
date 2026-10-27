@@ -231,11 +231,10 @@ int main(void)
 
                         const char *prompt =
                             "Enter your username: ";
-
-                        send(client_fd,
-                             prompt,
-                             strlen(prompt),
-                             0);
+		 if (send_all(client_fd, prompt, strlen(prompt)) == -1)
+			{
+				perror("send username prompt");
+			}
 
                         added = 1;
                         break;
@@ -247,10 +246,10 @@ int main(void)
                     const char *full =
                         "Server is full. Try again later.\n";
 
-                    send(client_fd,
-                         full,
-                         strlen(full),
-                         0);
+                    if (send_all(client_fd, full, strlen(full)) == -1)
+			{
+				perror("send server-full message");
+			}
 
                     close(client_fd);
 
@@ -359,10 +358,10 @@ int main(void)
                     "[Server]: Welcome, %s!\n",
                     clients[i].username);
 
-                send(client_fd,
-                     welcome,
-                     strlen(welcome),
-                     0);
+                if(send_all(client_fd, welcome, strlen(welcome)) == -1)
+		{
+			perror("send welcome message");
+		}
 
                 char join_message[BUFFER_SIZE];
 
