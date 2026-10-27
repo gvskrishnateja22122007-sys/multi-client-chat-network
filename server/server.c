@@ -20,7 +20,6 @@ typedef struct
 } Client;
 
 static void broadcast_message(struct pollfd poll_clients[],
-                              Client clients[],
                               int count,
                               int sender_fd,
                               const char *message)
@@ -47,20 +46,6 @@ static void broadcast_message(struct pollfd poll_clients[],
     }
 }
 
-static int find_client(struct pollfd poll_clients[],
-                       int count,
-                       int fd)
-{
-    for (int i = 1; i < count; i++)
-    {
-        if (poll_clients[i].fd == fd)
-        {
-            return i;
-        }
-    }
-
-    return -1;
-}
 
 int main(void)
 {
@@ -292,7 +277,6 @@ int main(void)
 
                     broadcast_message(
                         poll_clients,
-                        clients,
                         MAX_CLIENTS + 1,
                         client_fd,
                         leave_message);
@@ -351,7 +335,6 @@ int main(void)
 
                 broadcast_message(
                     poll_clients,
-                    clients,
                     MAX_CLIENTS + 1,
                     client_fd,
                     join_message);
@@ -362,7 +345,7 @@ int main(void)
             /*
              * Normal chat message.
              */
-            char message[BUFFER_SIZE];
+            char message[BUFFER_SIZE + USERNAME_SIZE + 4];
 
             snprintf(
                 message,
@@ -375,7 +358,6 @@ int main(void)
 
             broadcast_message(
                 poll_clients,
-                clients,
                 MAX_CLIENTS + 1,
                 client_fd,
                 message);
