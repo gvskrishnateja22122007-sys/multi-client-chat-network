@@ -28,3 +28,7 @@ Thumbs.db
 
 # Local backup files
 *.bak
+
+# Python cache
+__pycache__/
+*.py[cod]
