@@ -19,6 +19,38 @@ typedef struct
     char username[USERNAME_SIZE];
 } Client;
 
+static int send_all(int fd, const char *data, size_t length)
+{
+    size_t total_sent = 0;
+
+    while (total_sent < length)
+    {
+        ssize_t sent = send(fd,
+                            data + total_sent,
+                            length - total_sent,
+                            0);
+
+        if (sent < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+
+            return -1;
+        }
+
+        if (sent == 0)
+        {
+            errno = EPIPE;
+            return -1;
+        }
+
+        total_sent += (size_t)sent;
+    }
+
+    return 0;
+}
 static void broadcast_message(struct pollfd poll_clients[],
                               int count,
                               int sender_fd,
@@ -36,10 +68,9 @@ static void broadcast_message(struct pollfd poll_clients[],
             continue;
         }
 
-        if (send(poll_clients[i].fd,
+        if (send_all(poll_clients[i].fd,
                  message,
-                 strlen(message),
-                 0) == -1)
+                 strlen(message)) == -1)
         {
             perror("send");
         }
