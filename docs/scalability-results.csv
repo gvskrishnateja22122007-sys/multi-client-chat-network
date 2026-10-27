@@ -1,0 +1,4 @@
+target_clients,successful_connections,failed_connections,connection_test_duration_seconds
+2,2,0,0.0003
+5,5,0,0.0014
+10,10,0,0.0012
