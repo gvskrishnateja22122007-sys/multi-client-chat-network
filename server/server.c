@@ -358,6 +358,107 @@ int main(void)
 
                 continue;
             }
+            /*
+             * Private message command: /msg username message
+             */
+            if (strncmp(buffer, "/msg ", 5) == 0)
+            {
+                char *command = buffer + 5;
+
+                command[strcspn(command, "\r\n")] = '\0';
+
+                char *space = strchr(command, ' ');
+
+                if (space == NULL)
+                {
+                    const char *error =
+                        "[Server]: Usage: /msg username message\n";
+
+                    send(client_fd, error, strlen(error), 0);
+                    continue;
+                }
+
+                *space = '\0';
+
+                char *recipient = command;
+                char *private_text = space + 1;
+
+                while (*private_text == ' ')
+                {
+                    private_text++;
+                }
+
+                if (*recipient == '\0' || *private_text == '\0')
+                {
+                    const char *error =
+                        "[Server]: Usage: /msg username message\n";
+
+                    send(client_fd, error, strlen(error), 0);
+                    continue;
+                }
+
+                int recipient_index = -1;
+
+                for (int j = 1; j <= MAX_CLIENTS; j++)
+                {
+                    if (poll_clients[j].fd != -1 &&
+                        clients[j].username[0] != '\0' &&
+                        strcmp(clients[j].username, recipient) == 0)
+                    {
+                        recipient_index = j;
+                        break;
+                    }
+                }
+
+                if (recipient_index == -1)
+                {
+                    const char *error =
+                        "[Server]: User not found.\n";
+
+                    send(client_fd, error, strlen(error), 0);
+                    continue;
+                }
+
+                char private_message[BUFFER_SIZE];
+
+                snprintf(
+                    private_message,
+                    sizeof(private_message),
+                    "[Private from %s]: %.900s\n",
+                    clients[i].username,
+                    private_text);
+
+                if (send(
+                        poll_clients[recipient_index].fd,
+                        private_message,
+                        strlen(private_message),
+                        0) == -1)
+                {
+                    perror("private message send");
+
+                    const char *error =
+                        "[Server]: Failed to send private message.\n";
+
+                    send(client_fd, error, strlen(error), 0);
+                    continue;
+                }
+
+                char confirmation[BUFFER_SIZE];
+
+                snprintf(
+                    confirmation,
+                    sizeof(confirmation),
+                    "[Server]: Private message sent to %s.\n",
+                    recipient);
+
+                send(
+                    client_fd,
+                    confirmation,
+                    strlen(confirmation),
+                    0);
+
+                continue;
+            }
 
             /*
              * Normal chat message.

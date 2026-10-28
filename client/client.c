@@ -6,24 +6,26 @@
 #include <sys/socket.h>
 #include <poll.h>
 
-#define DEFAULT_SERVER_IP "127.0.0.1"
+#define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 8080
 #define BUFFER_SIZE 1024
 
-int main(int argc, char *argv[])
+int main(void)
 {
     int client_fd;
+
     struct sockaddr_in server_addr;
 
     struct pollfd fds[2];
 
     char buffer[BUFFER_SIZE];
-    const char *server_ip = (argc > 1) ? argv[1] : DEFAULT_SERVER_IP;
 
     /*
-     * 1. Create socket
+     * Create socket.
      */
-    client_fd = socket(AF_INET, SOCK_STREAM, 0);
+    client_fd = socket(AF_INET,
+                       SOCK_STREAM,
+                       0);
 
     if (client_fd == -1)
     {
@@ -34,7 +36,7 @@ int main(int argc, char *argv[])
     printf("Client socket created successfully.\n");
 
     /*
-     * 2. Configure server address
+     * Configure server address.
      */
     memset(&server_addr, 0, sizeof(server_addr));
 
@@ -42,7 +44,7 @@ int main(int argc, char *argv[])
     server_addr.sin_port = htons(SERVER_PORT);
 
     if (inet_pton(AF_INET,
-                  server_ip,
+                  SERVER_IP,
                   &server_addr.sin_addr) <= 0)
     {
         perror("inet_pton");
@@ -51,7 +53,7 @@ int main(int argc, char *argv[])
     }
 
     /*
-     * 3. Connect to server
+     * Connect.
      */
     printf("Connecting to server...\n");
 
@@ -65,14 +67,53 @@ int main(int argc, char *argv[])
     }
 
     printf("Connected to server!\n");
-    printf("Type messages and press Enter.\n");
-    printf("Type /quit to disconnect.\n\n");
 
     /*
-     * 4. Monitor both:
+     * Receive username prompt.
+     */
+    ssize_t received =
+        recv(client_fd,
+             buffer,
+             sizeof(buffer) - 1,
+             0);
+
+    if (received <= 0)
+    {
+        printf("Server disconnected.\n");
+        close(client_fd);
+        return EXIT_FAILURE;
+    }
+
+    buffer[received] = '\0';
+
+    printf("%s", buffer);
+
+    /*
+     * Enter username.
+     */
+    if (fgets(buffer,
+              sizeof(buffer),
+              stdin) == NULL)
+    {
+        close(client_fd);
+        return EXIT_FAILURE;
+    }
+
+    if (send(client_fd,
+             buffer,
+             strlen(buffer),
+             0) == -1)
+    {
+        perror("send");
+        close(client_fd);
+        return EXIT_FAILURE;
+    }
+
+    /*
+     * Set up poll().
      *
-     * stdin       → user typing
-     * client_fd   → server messages
+     * fds[0] = keyboard
+     * fds[1] = server
      */
     fds[0].fd = STDIN_FILENO;
     fds[0].events = POLLIN;
@@ -80,9 +121,15 @@ int main(int argc, char *argv[])
     fds[1].fd = client_fd;
     fds[1].events = POLLIN;
 
+    printf("\nYou are connected to the chat.\n");
+    printf("Type messages and press Enter.\n");
+    printf("Type /quit to leave.\n\n");
+
     while (1)
     {
-        int ready = poll(fds, 2, -1);
+        int ready = poll(fds,
+                         2,
+                         -1);
 
         if (ready == -1)
         {
@@ -91,16 +138,20 @@ int main(int argc, char *argv[])
         }
 
         /*
-         * Check keyboard input
+         * Keyboard input.
          */
         if (fds[0].revents & POLLIN)
         {
-            if (fgets(buffer, sizeof(buffer), stdin) == NULL)
+            if (fgets(buffer,
+                      sizeof(buffer),
+                      stdin) == NULL)
             {
                 break;
             }
 
-            if (strncmp(buffer, "/quit", 5) == 0)
+            if (strncmp(buffer,
+                        "/quit",
+                        5) == 0)
             {
                 break;
             }
@@ -116,23 +167,24 @@ int main(int argc, char *argv[])
         }
 
         /*
-         * Check messages from server
+         * Server message.
          */
-        if (fds[1].revents & POLLIN)
+        if (fds[1].revents &
+            (POLLIN | POLLHUP | POLLERR))
         {
-            ssize_t bytes_received =
+            received =
                 recv(client_fd,
                      buffer,
                      sizeof(buffer) - 1,
                      0);
 
-            if (bytes_received <= 0)
+            if (received <= 0)
             {
                 printf("\nServer disconnected.\n");
                 break;
             }
 
-            buffer[bytes_received] = '\0';
+            buffer[received] = '\0';
 
             printf("\n%s", buffer);
             printf("> ");
